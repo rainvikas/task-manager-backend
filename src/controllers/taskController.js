@@ -1,11 +1,20 @@
 const Task = require('../models/taskModel');
+const User = require('../models/userModel');
 
 // Create Task
 exports.createTask = async (req, res) => {
     try {
-        const task = new Task(req.body);
+        const { title, description, status, priority, due_date, assigned_to } = req.body;
+
+        // Validate assigned_to field
+        if (assigned_to) {
+            const userExists = await User.findById(assigned_to);
+            if (!userExists) return res.status(400).json({ error: "Assigned user does not exist" });
+        }
+
+        const task = new Task({ title, description, status, priority, due_date, assigned_to });
         await task.save();
-        res.status(201).json(task);
+        res.status(201).json({ success: true, data: task });
     } catch (error) {
         res.status(400).json({ error: error.message });
     }
@@ -15,33 +24,44 @@ exports.createTask = async (req, res) => {
 exports.getTasks = async (req, res) => {
     try {
         const { status, priority, due_date, sortBy = 'createdAt', order = 'desc', page = 1, limit = 10 } = req.query;
-        const filter = {};
+        const filter = { isDeleted: false };
 
         // Apply filtering
         if (status) filter.status = status;
         if (priority) filter.priority = priority;
-        if (due_date) filter.due_date = { $lte: new Date(due_date) };
+        if (due_date) filter.due_date = { $gte: new Date(due_date) };
 
-        // Fetch filtered and paginated tasks
+        // Validate sorting fields
+        const validSortFields = ["createdAt", "title", "priority", "due_date"];
+        if (!validSortFields.includes(sortBy)) {
+            return res.status(400).json({ error: `Invalid sort field. Allowed values: ${validSortFields.join(", ")}` });
+        }
+
         const tasks = await Task.find(filter)
             .sort({ [sortBy]: order === 'desc' ? -1 : 1 })
             .skip((page - 1) * Number(limit))
             .limit(Number(limit))
-            .populate('assigned_to');
+            .populate('assigned_to', 'email role');
 
-        res.json(tasks);
+        res.status(200).json({
+            success: true,
+            total: await Task.countDocuments(filter),
+            page: Number(page),
+            limit: Number(limit),
+            data: tasks
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 };
 
-
 // Get Single Task by ID
 exports.getTaskById = async (req, res) => {
     try {
-        const task = await Task.findById(req.params.id).populate('assigned_to');
-        if (!task) return res.status(404).json({ message: 'Task not found' });
-        res.json(task);
+        const task = await Task.findById(req.params.id).populate('assigned_to', 'email role');
+        if (!task || task.isDeleted) return res.status(404).json({ message: 'Task not found' });
+
+        res.status(200).json({ success: true, data: task });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -50,20 +70,42 @@ exports.getTaskById = async (req, res) => {
 // Update Task
 exports.updateTask = async (req, res) => {
     try {
+        const { assigned_to } = req.body;
+
+        // Validate assigned_to field
+        if (assigned_to) {
+            const userExists = await User.findById(assigned_to);
+            if (!userExists) return res.status(400).json({ error: "Assigned user does not exist" });
+        }
+
         const task = await Task.findByIdAndUpdate(req.params.id, req.body, { new: true });
-        if (!task) return res.status(404).json({ message: 'Task not found' });
-        res.json(task);
+        if (!task || task.isDeleted) return res.status(404).json({ message: 'Task not found' });
+
+        res.status(200).json({ success: true, data: task });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 };
 
-// Delete Task
+// Soft Delete Task
 exports.deleteTask = async (req, res) => {
     try {
-        const task = await Task.findByIdAndDelete(req.params.id);
+        const task = await Task.findByIdAndUpdate(req.params.id, { isDeleted: true }, { new: true });
         if (!task) return res.status(404).json({ message: 'Task not found' });
-        res.json({ message: 'Task deleted successfully' });
+
+        res.status(200).json({ message: 'Task soft deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// Restore Task (Soft Deleted)
+exports.restoreTask = async (req, res) => {
+    try {
+        const task = await Task.findByIdAndUpdate(req.params.id, { isDeleted: false }, { new: true });
+        if (!task) return res.status(404).json({ message: 'Task not found' });
+
+        res.status(200).json({ message: 'Task restored successfully' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

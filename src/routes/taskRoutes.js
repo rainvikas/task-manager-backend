@@ -1,5 +1,5 @@
 const express = require('express');
-const { createTask, getTasks, getTaskById, updateTask, deleteTask } = require('../controllers/taskController');
+const { createTask, getTasks, getTaskById, updateTask, deleteTask, restoreTask } = require('../controllers/taskController');
 const authMiddleware = require('../middleware/authMiddleware');
 const router = express.Router();
 
@@ -7,9 +7,18 @@ const router = express.Router();
  * @swagger
  * /api/tasks:
  *   get:
- *     summary: Get all tasks
+ *     summary: Get all tasks with filtering, sorting, and pagination
  *     tags: [Tasks]
+ *     security:
+ *       - AuthToken: []
  *     parameters:
+ *       - in: header
+ *         name: Authorization
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "your_jwt_token"
+ *         description: JWT token for authentication
  *       - in: query
  *         name: status
  *         schema:
@@ -21,28 +30,40 @@ const router = express.Router();
  *           type: string
  *         description: Filter by task priority (High, Medium, Low)
  *       - in: query
+ *         name: due_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter tasks with a due date greater than or equal to the given date
+ *       - in: query
  *         name: sortBy
  *         schema:
  *           type: string
- *         description: Sort by field (createdAt, due_date)
+ *           enum: [createdAt, title, priority, due_date]
+ *           example: "createdAt"
+ *         description: Sort by field
  *       - in: query
  *         name: order
  *         schema:
  *           type: string
- *         description: Sort order (asc, desc)
+ *           enum: [asc, desc]
+ *           example: "desc"
+ *         description: Sort order
  *       - in: query
  *         name: page
  *         schema:
  *           type: integer
+ *           example: 1
  *         description: Page number for pagination
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
- *         description: Number of items per page
+ *           example: 10
+ *         description: Number of tasks per page
  *     responses:
  *       200:
- *         description: List of tasks
+ *         description: List of tasks with pagination
  */
 router.get('/', authMiddleware, getTasks);
 
@@ -52,6 +73,16 @@ router.get('/', authMiddleware, getTasks);
  *   post:
  *     summary: Create a new task
  *     tags: [Tasks]
+ *     security:
+ *       - AuthToken: []
+ *     parameters:
+ *       - in: header
+ *         name: Authorization
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "your_jwt_token"
+ *         description: JWT token for authentication
  *     requestBody:
  *       required: true
  *       content:
@@ -63,8 +94,12 @@ router.get('/', authMiddleware, getTasks);
  *                 type: string
  *               description:
  *                 type: string
+ *               status:
+ *                 type: string
+ *                 enum: [Pending, Completed]
  *               priority:
  *                 type: string
+ *                 enum: [High, Medium, Low]
  *               due_date:
  *                 type: string
  *                 format: date
@@ -83,12 +118,22 @@ router.post('/', authMiddleware, createTask);
  *   get:
  *     summary: Get a task by ID
  *     tags: [Tasks]
+ *     security:
+ *       - AuthToken: []
  *     parameters:
+ *       - in: header
+ *         name: Authorization
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "your_jwt_token"
+ *         description: JWT token for authentication
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
+ *         description: Task ID to retrieve
  *     responses:
  *       200:
  *         description: Task data
@@ -101,12 +146,22 @@ router.get('/:id', authMiddleware, getTaskById);
  *   put:
  *     summary: Update a task
  *     tags: [Tasks]
+ *     security:
+ *       - AuthToken: []
  *     parameters:
+ *       - in: header
+ *         name: Authorization
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "your_jwt_token"
+ *         description: JWT token for authentication
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
+ *         description: Task ID to update
  *     requestBody:
  *       required: true
  *       content:
@@ -118,10 +173,12 @@ router.get('/:id', authMiddleware, getTaskById);
  *                 type: string
  *               description:
  *                 type: string
- *               priority:
- *                 type: string
  *               status:
  *                 type: string
+ *                 enum: [Pending, Completed]
+ *               priority:
+ *                 type: string
+ *                 enum: [High, Medium, Low]
  *               due_date:
  *                 type: string
  *                 format: date
@@ -135,18 +192,56 @@ router.put('/:id', authMiddleware, updateTask);
  * @swagger
  * /api/tasks/{id}:
  *   delete:
- *     summary: Delete a task
+ *     summary: Soft delete a task
  *     tags: [Tasks]
+ *     security:
+ *       - AuthToken: []
  *     parameters:
+ *       - in: header
+ *         name: Authorization
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "your_jwt_token"
+ *         description: JWT token for authentication
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
+ *         description: Task ID to delete
  *     responses:
  *       200:
- *         description: Task deleted
+ *         description: Task soft deleted successfully
  */
 router.delete('/:id', authMiddleware, deleteTask);
+
+/**
+ * @swagger
+ * /api/tasks/{id}/restore:
+ *   put:
+ *     summary: Restore a soft deleted task
+ *     tags: [Tasks]
+ *     security:
+ *       - AuthToken: []
+ *     parameters:
+ *       - in: header
+ *         name: Authorization
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "your_jwt_token"
+ *         description: JWT token for authentication
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Task ID to restore
+ *     responses:
+ *       200:
+ *         description: Task restored successfully
+ */
+router.put('/:id/restore', authMiddleware, restoreTask);
 
 module.exports = router;
