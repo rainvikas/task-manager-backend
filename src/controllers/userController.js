@@ -9,6 +9,12 @@ exports.createUser = async (req, res) => {
 
         const { email, password, role } = req.body;
 
+        // Check if the user already exists
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ error: "User with this email already exists" });
+        }
+
         const user = new User({ email, password, role });
         await user.save();
         res.status(201).json({ message: 'User created successfully', user });

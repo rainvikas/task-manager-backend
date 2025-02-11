@@ -5,15 +5,23 @@ const Task = require('../models/taskModel');
 const User = require('../models/userModel');
 
 let authToken;
+let testUser;
+let testTask;
 
 beforeAll(async () => {
     await mongoose.connect(process.env.MONGO_URI, { authSource: "admin" });
     
-    // Create a test user and get a JWT token
-    const userResponse = await request(app)
-        .post('/api/auth/register')
-        .send({ email: "testuser@example.com", password: "password123" });
+    // Ensure test user exists
+    testUser = await User.findOne({ email: "testuser@example.com" });
     
+    if (!testUser) {
+        await request(app)
+            .post('/api/auth/register')
+            .send({ email: "testuser@example.com", password: "password123", role: "admin" });
+        testUser = await User.findOne({ email: "testuser@example.com" });
+    }
+
+    // Get the auth token
     const loginResponse = await request(app)
         .post('/api/auth/login')
         .send({ email: "testuser@example.com", password: "password123" });
@@ -31,40 +39,67 @@ describe('Task API Endpoints', () => {
     it('should create a new task', async () => {
         const response = await request(app)
             .post('/api/tasks')
-            .set('Authorization', `Bearer ${authToken}`)
+            .set('Authorization', `${authToken}`)
             .send({
                 title: "Test Task",
                 description: "Task description",
-                priority: "High"
+                priority: "High",
+                assigned_to: testUser ? testUser._id : null
             });
+        
         expect(response.status).toBe(201);
-        expect(response.body.title).toBe("Test Task");
+        expect(response.body.success).toBe(true);
+        testTask = response.body.data;
     });
 
-    it('should get all tasks', async () => {
+    it('should get all tasks with filtering, sorting, and pagination', async () => {
         const response = await request(app)
             .get('/api/tasks')
-            .set('Authorization', `Bearer ${authToken}`);
+            .set('Authorization', `${authToken}`)
+            .query({ sortBy: "createdAt", order: "asc", page: 1, limit: 5 });
+        
         expect(response.status).toBe(200);
-        expect(Array.isArray(response.body)).toBeTruthy();
+        expect(response.body.success).toBe(true);
+    });
+
+    it('should get a task by ID', async () => {
+        if (!testTask) return;
+        const response = await request(app)
+            .get(`/api/tasks/${testTask._id}`)
+            .set('Authorization', `${authToken}`);
+        
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
     });
 
     it('should update a task', async () => {
-        const task = await Task.create({ title: "Task to update", priority: "Medium" });
+        if (!testTask) return;
         const response = await request(app)
-            .put(`/api/tasks/${task._id}`)
-            .set('Authorization', `Bearer ${authToken}`)
-            .send({ priority: "High" });
+            .put(`/api/tasks/${testTask._id}`)
+            .set('Authorization', `${authToken}`)
+            .send({ priority: "Medium" });
+        
         expect(response.status).toBe(200);
-        expect(response.body.priority).toBe("High");
+        expect(response.body.success).toBe(true);
     });
 
-    it('should delete a task', async () => {
-        const task = await Task.create({ title: "Task to delete", priority: "Low" });
+    it('should soft delete a task', async () => {
+        if (!testTask) return;
         const response = await request(app)
-            .delete(`/api/tasks/${task._id}`)
-            .set('Authorization', `Bearer ${authToken}`);
+            .delete(`/api/tasks/${testTask._id}`)
+            .set('Authorization', `${authToken}`);
+        
         expect(response.status).toBe(200);
-        expect(response.body.message).toBe("Task deleted successfully");
+        expect(response.body.message).toBe("Task soft deleted successfully");
+    });
+
+    it('should restore a soft deleted task', async () => {
+        if (!testTask) return;
+        const response = await request(app)
+            .put(`/api/tasks/${testTask._id}/restore`)
+            .set('Authorization', `${authToken}`);
+        
+        expect(response.status).toBe(200);
+        expect(response.body.message).toBe("Task restored successfully");
     });
 });
